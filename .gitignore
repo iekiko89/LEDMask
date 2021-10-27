@@ -1,0 +1,7 @@
+# Ignore PlatformIO articacts
+.pio
+.pioenvs
+.piolibdeps
+
+# Ignore VSCode settings
+.vscode/*
