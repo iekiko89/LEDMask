@@ -18,7 +18,7 @@ class Sound {
 };
 
 bool Sound::runPattern() {
-  if(checkButton()) return false;
+  //if(checkButton()) return false;
   FastLED.clear();
   readVolume();
   drawEyebrows(faceType);

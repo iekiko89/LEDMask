@@ -1,5 +1,5 @@
 /* Helper functions for an two-dimensional XY matrix of pixels.
-   
+ 
 */
 
 #include <WS2812Serial.h>
@@ -7,6 +7,9 @@
 #include <FastLED.h>
 #include <EEPROM.h>
 #include <JC_Button.h>
+
+
+
 
 #define LED_PIN           14           // Output pin for LEDs [5]
 #define MODE_PIN          15           // Input pin for button to change mode [3]
@@ -16,7 +19,7 @@
 #define COLOR_ORDER       GRB         // Color order of LED string [GRB]
 #define CHIPSET           WS2812B     // LED string type [WS2182B]
 #define BRIGHTNESS        50          // Overall brightness [50]
-#define LAST_VISIBLE_LED  191         // Last LED that's visible [102]
+#define LAST_VISIBLE_LED  192         // Last LED that's visible [102]
 #define MAX_MILLIAMPS     5000        // Max current in mA to draw from supply [500]
 #define SAMPLE_WINDOW     100         // How many ms to sample audio for [100]
 #define DEBOUNCE_MS       20          // Number of ms to debounce the button [20]
@@ -26,6 +29,7 @@
 #define kMatrixHeight     12          // Matrix height [11]
 #define NUM_LEDS (kMatrixWidth * kMatrixHeight)                                       // Total number of Leds
 #define MAX_DIMENSION ((kMatrixWidth>kMatrixHeight) ? kMatrixWidth : kMatrixHeight)   // Largest dimension of matrix
+
 #define safety_pixel NUM_LEDS + 1
 
 #define MAX_DIMENSION ((kMatrixWidth>kMatrixHeight) ? kMatrixWidth : kMatrixHeight)   // Largest dimension of matrix
@@ -99,7 +103,6 @@ void setup() {
   Serial.begin(57600);
   Serial.println("resetting");
   LEDS.addLeds<WS2812SERIAL,LED_PIN,GRB>(leds,NUM_LEDS);
-  
   FastLED.setBrightness(brightness);
   FastLED.clear(true);
 
@@ -107,7 +110,9 @@ void setup() {
   plusBtn.begin();
   minusBtn.begin();
   buttonPushCounter = (int)EEPROM.read(1);    // load previous setting
-
+  
+  Serial.begin(57600);
+  Serial.print(F("Starting pattern "));
   Serial.println(buttonPushCounter);
 }
 

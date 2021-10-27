@@ -1,57 +1,43 @@
 /* Helper functions for an two-dimensional XY matrix of pixels.
-
-This special 'XY' code lets you program the RGB Shades
-if it's was just a plain 16x5 matrix.  
-
-Writing to and reading from the 'holes' in the layout is 
-also allowed; holes retain their data, it's just not displayed.
-
-You can also test to see if you're on- or off- the layout
-like this
-  if( XY(x,y) > LAST_VISIBLE_LED ) { ...off the layout...}
-
-X and Y bounds checking is also included, so it is safe
-to just do this without checking x or y in your code:
-  leds[ XY(x,y) ] == CRGB::Red;
-All out of bounds coordinates map to the first hidden pixel.
-
- https://macetech.github.io/FastLED-XY-Map-Generator/
-      0   1   2   3   4   5   6   7   8   9  10  11   12 13  14
-   +-----------------------------------------------------------
- 0 | 14  13  12  11  10   9   8   7   6   5   4   3   2   1   0
- 1 | 15  16  17  18  19  20  21  22  23  24  25  26  27  28  29
- 2 | 44  43  42  41  40  39  38  37  36  35  34  33  32  31  30
- 3 | 45  46                      47                      48  49
- 4 | 58  57  56              55  54  53              52  51  50
- 5 | 59  60  61  62          63  64  65          66  67  68  69
- 6 |     80  79  78      77  76  75  74  73      72  71  70  
- 7 |                     81  82  83  84  85          
- 8 |                 92  91  90  89  88  87  86        
- 9 |                     93  94  95  96  97          
-10 |                     102 101 100 99  98    
+ 
 */
 
+#include <WS2812Serial.h>
+#define USE_WS2812SERIAL
 #include <FastLED.h>
 #include <EEPROM.h>
 #include <JC_Button.h>
 
-#define LED_PIN           5           // Output pin for LEDs [5]
+
+
+
+#define LED_PIN           14           // Output pin for LEDs [5]
+#define MODE_PIN          15           // Input pin for button to change mode [3]
+#define PLUS_PIN          2           // Input pin for plus button [2]
+#define MINUS_PIN         4           // Input pin for minus button [4]
+#define MIC_PIN           A6          // Input pin for microphone [A6]
 #define COLOR_ORDER       GRB         // Color order of LED string [GRB]
 #define CHIPSET           WS2812B     // LED string type [WS2182B]
-#define BRIGHTNESS        255         // Overall brightness [50]
-#define LAST_VISIBLE_LED  102         // Last LED that's visible [102]
+#define BRIGHTNESS        50          // Overall brightness [50]
+#define LAST_VISIBLE_LED  192         // Last LED that's visible [102]
 #define MAX_MILLIAMPS     5000        // Max current in mA to draw from supply [500]
 #define SAMPLE_WINDOW     100         // How many ms to sample audio for [100]
-#define BTN_PIN           3           // Pin for button [3]
 #define DEBOUNCE_MS       20          // Number of ms to debounce the button [20]
 #define LONG_PRESS        500         // Number of ms to hold the button to count as long press [500]
 #define PATTERN_TIME      10          // Seconds to show each pattern on autoChange [10]
-#define kMatrixWidth      15          // Matrix width [15]
-#define kMatrixHeight     11          // Matrix height [11]
+#define kMatrixWidth      27          // Matrix width [15]
+#define kMatrixHeight     12          // Matrix height [11]
 #define NUM_LEDS (kMatrixWidth * kMatrixHeight)                                       // Total number of Leds
 #define MAX_DIMENSION ((kMatrixWidth>kMatrixHeight) ? kMatrixWidth : kMatrixHeight)   // Largest dimension of matrix
 
-CRGB leds[ NUM_LEDS ];
+#define safety_pixel NUM_LEDS + 1
+
+#define MAX_DIMENSION ((kMatrixWidth>kMatrixHeight) ? kMatrixWidth : kMatrixHeight)   // Largest dimension of matrix
+CRGB leds_plus_safety_pixel[ NUM_LEDS + 1];
+CRGB* const leds( leds_plus_safety_pixel);
+
+uint8_t brightness = BRIGHTNESS;
+uint8_t soundSensitivity = 10;
 
 // Used to check RAM availability. Usage: Serial.println(freeRam());
 int freeRam () {
@@ -61,10 +47,12 @@ int freeRam () {
 }
 
 // Button stuff
-uint8_t buttonPushCounter = 0;
+uint8_t buttonPushCounter = 10;
 uint8_t state = 0;
 bool autoChangeVisuals = false;
-Button modeBtn(BTN_PIN, DEBOUNCE_MS);
+Button modeBtn(MODE_PIN, DEBOUNCE_MS);
+Button plusBtn(PLUS_PIN, DEBOUNCE_MS);
+Button minusBtn(MINUS_PIN, DEBOUNCE_MS);
 
 void incrementButtonPushCounter() {
   buttonPushCounter = (buttonPushCounter + 1) %11;
@@ -85,50 +73,84 @@ void incrementButtonPushCounter() {
 #include "Snake.h"
 
 // Helper to map XY coordinates to irregular matrix
-uint16_t XY( uint8_t x, uint8_t y)
-{
+uint16_t XY (uint16_t x, uint16_t y) {
   // any out of bounds address maps to the first hidden pixel
-  if( (x >= kMatrixWidth) || (y >= kMatrixHeight) ) {
-    return (LAST_VISIBLE_LED + 1);
+  if ( (x >= kMatrixWidth) || (y >= kMatrixHeight) ) {
+    return (safety_pixel);
   }
 
-  const uint8_t XYTable[] = {
-    14,  13,  12,  11,  10,   9,   8,   7,   6,   5,   4,   3,   2,   1,   0,
-    15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,  29,
-    44,  43,  42,  41,  40,  39,  38,  37,  36,  35,  34,  33,  32,  31,  30,
-    45,  46, 103, 104, 105, 106, 107,  47, 108, 109, 110, 111, 112,  48,  49,
-    58,  57,  56, 118, 117, 116,  55,  54,  53, 115, 114, 113,  52,  51,  50,
-    59,  60,  61,  62, 119, 120,  63,  64,  65, 121, 122,  66,  67,  68,  69,
-   126,  80,  79,  78, 125,  77,  76,  75,  74,  73, 124,  72,  71,  70, 123,
-   127, 128, 129, 130, 131,  81,  82,  83,  84,  85, 132, 133, 134, 135, 136,
-   144, 143, 142, 141,  92,  91,  90,  89,  88,  87,  86, 140, 139, 138, 137,
-   145, 146, 147, 148, 149,  93,  94,  95,  96,  97, 150, 151, 152, 153, 154,
-   164, 163, 162, 161, 160, 102, 101, 100,  99,  98, 159, 158, 157, 156, 155
+  const uint16_t XYTable[] = {
+192,192,192,96,97,98,99,100,101,102,103,104,192,192,192,192,192,192,192,192,192,192,192,192,192,192,192,
+192,192,105,106,107,108,109,110,111,112,113,114,115,192,192,192,192,192,192,192,192,192,192,192,192,192,192,
+192,116,117,118,119,120,121,122,123,124,125,126,127,128,192,192,192,192,192,192,192,192,192,192,192,192,192,
+129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,192,192,192,192,192,192,192,192,192,192,192,192,
+144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,0,1,2,3,4,5,6,7,8,192,192,192,
+192,159,160,161,162,163,164,165,166,167,168,169,170,171,9,10,11,12,13,14,15,16,17,18,19,192,192,
+192,192,172,173,174,175,176,177,178,179,180,181,182,20,21,22,23,24,25,26,27,28,29,30,31,32,192,
+192,192,192,183,184,185,186,187,188,189,190,191,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,
+192,192,192,192,192,192,192,192,192,192,192,192,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,
+192,192,192,192,192,192,192,192,192,192,192,192,192,63,64,65,66,67,68,69,70,71,72,73,74,75,192,
+192,192,192,192,192,192,192,192,192,192,192,192,192,192,76,77,78,79,80,81,82,83,84,85,86,192,192,
+192,192,192,192,192,192,192,192,192,192,192,192,192,192,192,87,88,89,90,91,92,93,94,95,192,192,192
   };
 
-  uint8_t i = (y * kMatrixWidth) + x;
-  uint8_t j = XYTable[i];
+  uint16_t i = (y * kMatrixWidth) + x;
+  uint16_t j = XYTable[i];
   return j;
 }
 
 void setup() {
-  FastLED.addLeds < CHIPSET, LED_PIN, COLOR_ORDER > (leds, NUM_LEDS).setCorrection(TypicalSMD5050);
-  //FastLED.setMaxPowerInVoltsAndMilliamps(5, MAX_MILLIAMPS);
-  FastLED.setBrightness(BRIGHTNESS);
+  Serial.begin(57600);
+  Serial.println("resetting");
+  LEDS.addLeds<WS2812SERIAL,LED_PIN,GRB>(leds,NUM_LEDS);
+  FastLED.setBrightness(brightness);
   FastLED.clear(true);
 
   modeBtn.begin();
-  // Upload this sketch once, then uncomment the line below and upload again.
-  // This ensures the EEPROM value is set correctly.
-  // buttonPushCounter = (int)EEPROM.read(1);    // load previous setting
+  plusBtn.begin();
+  minusBtn.begin();
+  buttonPushCounter = (int)EEPROM.read(1);    // load previous setting
   
   Serial.begin(57600);
   Serial.print(F("Starting pattern "));
   Serial.println(buttonPushCounter);
 }
 
+void checkBrightnessButton() {
+  // On all none-sound reactive patterns, plus and minus control the brightness
+  plusBtn.read();
+  minusBtn.read();
+
+  if (plusBtn.wasReleased()) {
+    brightness += 20;
+    FastLED.setBrightness(brightness);
+  }
+
+  if (minusBtn.wasReleased()) {
+    brightness -= 20;
+    FastLED.setBrightness(brightness);
+  }
+}
+
+void checkSoundLevelButton(){
+  // On all sound reactive patterns, plus and minus control the sound sensitivity
+  plusBtn.read();
+  minusBtn.read();
+
+  if (plusBtn.wasReleased()) {
+    // Increase sound sensitivity
+    soundSensitivity -= 1;
+    if (soundSensitivity == 0) soundSensitivity = 1;
+  }
+
+  if (minusBtn.wasReleased()) {
+    // Decrease sound sensitivity
+    soundSensitivity += 1;
+  }
+}
+
 bool checkButton() {  
-  modeBtn.read(); 
+  modeBtn.read();
 
   switch (state) {
     case 0:                
@@ -245,7 +267,7 @@ void runSnake(){
 void loop() {
   switch (buttonPushCounter) {
     case 0:
-      runSound();
+      runFire();//runSound();
       break;
     case 1:
       runRainbow();
