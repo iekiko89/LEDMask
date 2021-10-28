@@ -18,7 +18,7 @@
 #define MIC_PIN           A6          // Input pin for microphone [A6]
 #define COLOR_ORDER       GRB         // Color order of LED string [GRB]
 #define CHIPSET           WS2812B     // LED string type [WS2182B]
-#define BRIGHTNESS        50          // Overall brightness [50]
+#define BRIGHTNESS        100         // Overall brightness [50]
 #define LAST_VISIBLE_LED  192         // Last LED that's visible [102]
 #define MAX_MILLIAMPS     5000        // Max current in mA to draw from supply [500]
 #define SAMPLE_WINDOW     100         // How many ms to sample audio for [100]
